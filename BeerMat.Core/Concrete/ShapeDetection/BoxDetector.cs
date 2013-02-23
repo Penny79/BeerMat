@@ -2,27 +2,23 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Threading.Tasks;
+
+using BeerMat.Core.Abstract;
 using BeerMat.Core.Model;
+
 using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
 
-namespace BeerMat.Core.Filter
+namespace BeerMat.Core.Concrete.ShapeDetection
 {
-    internal class BoxDetector : IImageFilter
-    {
+    internal class BoxDetector : IBoxDetector
+    {      
 
-        class DistanceInformation
+        #region Public Methods and Operators
+
+        public IEnumerable<Point[]> DetectShapes(Image<Gray, byte> sourceFrame)
         {
-            public Point Point { get; set; }
-
-            public float Distance { get; set; }
-        }
-
-        public ImageData Run(ImageData imageData)
-        {
-            var source = imageData.CurrentImage;
             //CircleF[] circles = grayImage.HoughCircles(
             //    new Gray(120),
             //    new Gray(120),
@@ -33,19 +29,17 @@ namespace BeerMat.Core.Filter
             //    )[0];
 
             var boxList = new List<Point[]>();
-            
 
             using (var storage = new MemStorage()) //allocate storage for contour approximation
             {
-                var detectedContours = source.FindContours(CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, 
-                                                           RETR_TYPE.CV_RETR_EXTERNAL);
+                var detectedContours = sourceFrame.FindContours(
+                    CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, RETR_TYPE.CV_RETR_EXTERNAL);
 
-                
-              ////  Parallel.For(
-              //  Parallel.ForEach<Contour<Point>>(detectedContours.ToList(), (contour) =>
-              //      {
-                        
-              //      });
+                ////  Parallel.For(
+                //  Parallel.ForEach<Contour<Point>>(detectedContours.ToList(), (contour) =>
+                //      {
+
+                //      });
 
                 for (Contour<Point> contours = detectedContours; contours != null; contours = contours.HNext)
                 {
@@ -53,37 +47,30 @@ namespace BeerMat.Core.Filter
 
                     if (contours.Area > 1000)
                     {
-                        if (IsRectangle(currentContour))
+                        if (this.IsRectangle(currentContour))
                         {
                             var cornerPoints = GetCornerPointsOfPerspectiveRectangle(currentContour);
                             boxList.Add(cornerPoints);
                         }
                         else
                         {
-
                         }
                     }
                 }
             }
 
+            return boxList;
+        }
 
-            Image<Bgr, Byte> boxImage = imageData.OriginalImage.Convert<Bgr, Byte>();
+        #endregion
 
-            foreach (var box in boxList)
-            {
-                boxImage.DrawPolyline(box, true, new Bgr(Color.White), 5);
-            }
+        #region Methods
 
-
-            //var circle = circles.FirstOrDefault();
-            //boxImage.Draw(circle, new Bgr(Color.White), 2);
-
-            //foreach (CircleF circle in )
-            //    boxImage.Draw(circle, new Bgr(Color.White), 2);
-            
-          
-            imageData.CurrentImage = boxImage.Convert<Gray, Byte>();
-            return imageData;
+        private static float CalculateDistance(Point convexHullPoint, PointF point)
+        {
+            var dX = point.X - convexHullPoint.X;
+            var dY = point.Y - convexHullPoint.Y;
+            return (dX * dX) + (dY * dY);
         }
 
         /// <summary>
@@ -100,23 +87,18 @@ namespace BeerMat.Core.Filter
             var minAreavertices = minAreaRect.GetVertices();
 
             // init dictionary
-            var closestPoints = minAreavertices.ToDictionary(minAreavertice => minAreavertice,
-                                                             minAreavertice =>
-                                                             new DistanceInformation
-                                                                 {
-                                                                     Point = new Point(-1000000, -10000000),
-                                                                     Distance = float.MaxValue
-                                                                 });
+            var closestPoints = minAreavertices.ToDictionary(
+                minAreavertice => minAreavertice,
+                minAreavertice =>
+                new DistanceInformation { Point = new Point(-1000000, -10000000), Distance = float.MaxValue });
 
             var convexHull = currentContour.GetConvexHull(ORIENTATION.CV_CLOCKWISE);
-            
 
             foreach (var convexHullPoint in convexHull)
             {
                 foreach (var point in minAreavertices)
-                {                    
-                    float distance =  CalculateDistance(convexHullPoint, point);
-
+                {
+                    float distance = CalculateDistance(convexHullPoint, point);
 
                     if (distance < closestPoints[point].Distance)
                     {
@@ -126,21 +108,7 @@ namespace BeerMat.Core.Filter
                 }
             }
 
-
-            return closestPoints.Select(x => x.Value.Point).ToArray();           
-        }
-
-        private static float CalculateDistance(Point convexHullPoint, PointF point)
-        {
-            var dX = point.X - convexHullPoint.X;
-            var dY = point.Y - convexHullPoint.Y;
-            return (dX*dX) + (dY*dY);
-        }
-
-        public FilterType FilterType
-        {
-            get { return FilterType.Boxes; }
-            private set { }
+            return closestPoints.Select(x => x.Value.Point).ToArray();
         }
 
         /// <summary>
@@ -151,7 +119,9 @@ namespace BeerMat.Core.Filter
         private bool IsRectangle(Contour<Point> currentContour)
         {
             if (currentContour.Total != 4)
+            {
                 return false;
+            }
 
             bool isRectangle = true;
             Point[] pts = currentContour.ToArray();
@@ -159,8 +129,7 @@ namespace BeerMat.Core.Filter
 
             for (int i = 0; i < edges.Length; i++)
             {
-                double angle = Math.Abs(
-                    edges[(i + 1) % edges.Length].GetExteriorAngleDegree(edges[i]));
+                double angle = Math.Abs(edges[(i + 1) % edges.Length].GetExteriorAngleDegree(edges[i]));
                 if (angle < 60 || angle > 120)
                 {
                     isRectangle = false;
@@ -168,6 +137,19 @@ namespace BeerMat.Core.Filter
                 }
             }
             return isRectangle;
+        }
+
+        #endregion
+
+        private class DistanceInformation
+        {
+            #region Public Properties
+
+            public float Distance { get; set; }
+
+            public Point Point { get; set; }
+
+            #endregion
         }
     }
 }

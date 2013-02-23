@@ -3,9 +3,13 @@ namespace BeerMat.Core.Model
     public enum FilterType
     {
         Grey,
-        Treshold,
+
+        Threshold,
+
         Edges,
+
         Boxes,
+
         PreProcessingTest1
     }
 }

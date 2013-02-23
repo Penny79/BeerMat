@@ -32,6 +32,8 @@
                              HorizontalAlignment="Left" VerticalAlignment="Top" Canvas.Left="15" Canvas.Top="9" />
             </Canvas>
         </GroupBox>
+        <Label Content="Frames per Second" HorizontalAlignment="Left" Margin="386,468,0,0" VerticalAlignment="Top"/>
+        <Label Name="lblFps" Content="0" HorizontalAlignment="Left" Margin="502,468,0,0" VerticalAlignment="Top" Width="38"/>
     </Grid>
 
 </Window>

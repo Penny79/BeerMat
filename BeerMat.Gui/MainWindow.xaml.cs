@@ -1,15 +1,18 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Threading;
-using System.Timers;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+
 using BeerMat.Core;
+using BeerMat.Core.Concrete;
 using BeerMat.Core.Model;
+
 using Emgu.CV;
 using Emgu.CV.Structure;
-
 
 namespace WpfApplication1
 {
@@ -18,88 +21,113 @@ namespace WpfApplication1
     /// </summary>
     public partial class MainWindow : Window
     {
-        private readonly System.Timers.Timer timer;
-        private readonly SynchronizationContext sychronizationContext = SynchronizationContext.Current;
+        #region Fields
+
         private readonly Capture camera;
-        private Image<Bgr, byte> sampleImage;
+
+        private readonly Image<Bgr, byte> sampleImage;
+
+        private BeerMatDetectionResult lastResult;
+        private readonly BackgroundWorker worker = new BackgroundWorker()
+            {
+                WorkerReportsProgress = true,
+                WorkerSupportsCancellation = true
+            };
+
+        private bool isRestartNeeded = false;
+
+        private Timer timer;
+
+        #endregion
+
+        #region Constructors and Destructors
 
         public MainWindow()
         {
-            InitializeComponent();
+            this.InitializeComponent();
 
             //TestMarker();           
-            camera = new Capture(0);
-            timer = new System.Timers.Timer(100); // Timer anlegen
-            timer.Elapsed += timer_Elapsed;
-            timer.Start();
+            this.camera = new Capture(0);            
 
-            foreach (var step in Enum.GetNames(typeof (FilterType)))
+            foreach (var step in Enum.GetNames(typeof(FilterType)))
             {
-                cboSteps.Items.Add(step);
+                this.cboSteps.Items.Add(step);
             }
 
-            sampleImage = new Image<Bgr, byte>(@"D:\Projekte\BeerMat\BeerMat.Gui\images\Radeberger_sample1.bmp");
-            cboSteps.SelectedIndex = 0;
+            this.sampleImage = new Image<Bgr, byte>(@"D:\Projekte\BeerMat\BeerMat.Gui\images\Radeberger_sample1.bmp");
+            this.cboSteps.SelectedIndex = 0;
+
+            this.rbCamera.Checked += SourceChanged;
+            this.rbSample.Checked += SourceChanged;
+
+            var dispatcherTimer = new DispatcherTimer();
+            dispatcherTimer.Tick += dispatcherTimer_Tick;
+            dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, 50);
+            dispatcherTimer.IsEnabled = true;
+            dispatcherTimer.Start();
+
+           
+            
+            this.worker.ProgressChanged+=WorkerOnProgressChanged;
+            this.worker.DoWork += WorkerDoWork;            
+            this.worker.RunWorkerCompleted += worker_RunWorkerCompleted;
+            this.worker.RunWorkerAsync(this.rbCamera.IsChecked.Value);
         }
 
-        public void TestShapeDetection(double cannyTreshold, double linkingTreshold)
+        void dispatcherTimer_Tick(object sender, EventArgs e)
         {
-            var shapeDetector = new ShapeDetection();
-            shapeDetector.OnStepCompleted += shapeDetector_OnStepCompleted;
-
-
-            var sample = GetSampleImage();
-            imgOriginal.Source = ConvertToBitmapImage(sample);
-
-            var imageData = new ImageData {OriginalImage = sample};
-
-            shapeDetector.Process(imageData, cannyTreshold, linkingTreshold);
-        }
-
-        private void shapeDetector_OnStepCompleted(object sender, StepCompletedEventArgs e)
-        {
-            var selectedStep = FilterType.Treshold;
-
-            var value = (string) cboSteps.SelectedValue;
-
-            Enum.TryParse(value, true, out selectedStep);
-
-            if (selectedStep == e.ProcessingStep)
+            if (this.lastResult != null)
             {
-                imgResult.Source = ConvertToBitmapImage(e.ImageData.CurrentImage);
+                this.imgResult.Source = this.ConvertToBitmapImage(this.lastResult.ImageWithShapes);
+                this.imgOriginal.Source = this.ConvertToBitmapImage(this.lastResult.OriginalImage);
+            }
+        }
+        
+
+        void worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            this.worker.RunWorkerAsync(this.rbCamera.IsChecked.Value);
+        }
+
+        private void SourceChanged(object sender, RoutedEventArgs e)
+        {
+            isRestartNeeded = true;
+        }
+
+        #endregion
+
+        private void WorkerDoWork(object sender, DoWorkEventArgs e)
+        {
+            var useCamera = (bool)e.Argument;
+
+            var backgroundWorker = sender as BackgroundWorker;
+            if (backgroundWorker != null)
+            {
+                while (!backgroundWorker.CancellationPending)
+                {
+                    var shapeDetector = new BeerMatDetection();
+
+                    Image<Bgr, byte> nextFrame = useCamera ? this.camera.QueryFrame() : this.sampleImage;
+
+                    var result = shapeDetector.Process(nextFrame);
+
+                    worker.ReportProgress(1, result);
+                }
             }
         }
 
 
-        private Image<Bgr, byte> GetSampleImage()
-        {
-            Image<Bgr, byte> image = null;
-
-            if (rbCamera.IsChecked.Value)
+        private void WorkerOnProgressChanged(object sender, ProgressChangedEventArgs progressChangedEventArgs)
+        {           
+            var processingResult = progressChangedEventArgs.UserState as BeerMatDetectionResult;
+            this.lastResult = processingResult;
+            
+            if (isRestartNeeded)
             {
-                image = camera.QueryFrame();
+                this.worker.CancelAsync();
+                isRestartNeeded = false;
             }
-            else
-            {
-                image = this.sampleImage;
-            }
-
-            return image;
-        }
-
-
-        private void timer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            this.sychronizationContext.Send(
-                o => TestShapeDetection(cannyTreshold.Value, linkingTreshold.Value), null);
-
-            //this.sychronizationContext.Send(
-            //    o => TestTresholding(), null);
-            //using (Image<Bgr, byte> frame = camera.QueryFrame())
-            //{
-            //    DisplayImage(frame);
-            //}
-        }
+        }      
 
         private BitmapImage ConvertToBitmapImage<T>(Image<T, byte> processedImage) where T : struct, IColor
         {
@@ -114,6 +142,6 @@ namespace WpfApplication1
                 bitmap.EndInit();
                 return bitmap;
             }
-        }
+        }                 
     }
 }

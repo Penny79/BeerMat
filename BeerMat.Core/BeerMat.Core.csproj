@@ -42,14 +42,17 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="FilterType.cs" />
-    <Compile Include="Filter\PreProcessingTest1.cs" />
-    <Compile Include="Filter\BoxDetector.cs" />
-    <Compile Include="Filter\TresholdFilter.cs" />
-    <Compile Include="Filter\IImageFilter.cs" />
-    <Compile Include="ImageData.cs" />
-    <Compile Include="ShapeDetection.cs" />
-    <Compile Include="StepCompletedEventArgs.cs" />
+    <Compile Include="Abstract\ICircleDetector.cs" />
+    <Compile Include="Abstract\IImagePreProcessor.cs" />
+    <Compile Include="Abstract\IBoxDetector.cs" />
+    <Compile Include="Model\BeerMatDetectionResult.cs" />
+    <Compile Include="Model\FilterType.cs" />
+    <Compile Include="Concrete\PreProcessing\ImagePreProcessorAdvanced.cs" />
+    <Compile Include="Concrete\ShapeDetection\BoxDetector.cs" />
+    <Compile Include="Concrete\PreProcessing\TresholdFilter.cs" />
+    <Compile Include="Model\ImageData.cs" />
+    <Compile Include="Concrete\BeerMatDetector.cs" />
+    <Compile Include="Model\StepCompletedEventArgs.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup />
