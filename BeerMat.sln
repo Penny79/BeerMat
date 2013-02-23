@@ -1,0 +1,32 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BeerMat.Tests", "BeerMat.Tests\BeerMat.Tests.csproj", "{DD12CEFC-848C-47F0-BC67-67C1D37C3CEC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BeerMat.Core", "BeerMat.Core\BeerMat.Core.csproj", "{7D3273D8-97E6-40E7-9E2F-02D74A5FBAE0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BeerMat.Gui", "BeerMat.Gui\BeerMat.Gui.csproj", "{15B3BF55-12F5-4224-8181-347AF6BEBA9D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DD12CEFC-848C-47F0-BC67-67C1D37C3CEC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD12CEFC-848C-47F0-BC67-67C1D37C3CEC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD12CEFC-848C-47F0-BC67-67C1D37C3CEC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD12CEFC-848C-47F0-BC67-67C1D37C3CEC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D3273D8-97E6-40E7-9E2F-02D74A5FBAE0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D3273D8-97E6-40E7-9E2F-02D74A5FBAE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D3273D8-97E6-40E7-9E2F-02D74A5FBAE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D3273D8-97E6-40E7-9E2F-02D74A5FBAE0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{15B3BF55-12F5-4224-8181-347AF6BEBA9D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15B3BF55-12F5-4224-8181-347AF6BEBA9D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15B3BF55-12F5-4224-8181-347AF6BEBA9D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15B3BF55-12F5-4224-8181-347AF6BEBA9D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
