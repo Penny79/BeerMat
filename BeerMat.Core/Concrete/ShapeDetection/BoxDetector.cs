@@ -4,7 +4,6 @@ using System.Drawing;
 using System.Linq;
 
 using BeerMat.Core.Abstract;
-using BeerMat.Core.Model;
 
 using Emgu.CV;
 using Emgu.CV.CvEnum;
@@ -13,7 +12,21 @@ using Emgu.CV.Structure;
 namespace BeerMat.Core.Concrete.ShapeDetection
 {
     internal class BoxDetector : IBoxDetector
-    {      
+    {
+        #region Fields
+
+        private BoxTransformationCalculator transformationCalculator;
+
+        #endregion
+
+        #region Constructors and Destructors
+
+        public BoxDetector()
+        {
+            this.transformationCalculator = new BoxTransformationCalculator();
+        }
+
+        #endregion
 
         #region Public Methods and Operators
 
@@ -35,30 +48,24 @@ namespace BeerMat.Core.Concrete.ShapeDetection
                 var detectedContours = sourceFrame.FindContours(
                     CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, RETR_TYPE.CV_RETR_EXTERNAL);
 
-                ////  Parallel.For(
-                //  Parallel.ForEach<Contour<Point>>(detectedContours.ToList(), (contour) =>
-                //      {
+                var interesstingContours = FilterByArea(detectedContours);
 
-                //      });
-
-                for (Contour<Point> contours = detectedContours; contours != null; contours = contours.HNext)
+                //Parallel.ForEach(
+                //    interesstingContours,
+                //    (contour) =>
+                //        {
+                foreach (var contour in interesstingContours)
                 {
-                    Contour<Point> currentContour = contours.ApproxPoly(contours.Perimeter * 0.05, storage);
+                    Contour<Point> currentContour = contour.ApproxPoly(contour.Perimeter * 0.05, storage);
 
-                    if (contours.Area > 1000)
+                    if (IsRectangle(currentContour))
                     {
-                        if (this.IsRectangle(currentContour))
-                        {
-                            var cornerPoints = GetCornerPointsOfPerspectiveRectangle(currentContour);
-                            boxList.Add(cornerPoints);
-                        }
-                        else
-                        {
-                        }
+                        var cornerPoints = GetCornerPointsOfPerspectiveRectangle(currentContour);
+                        boxList.Add(cornerPoints);
                     }
+                    //});
                 }
             }
-
             return boxList;
         }
 
@@ -71,6 +78,19 @@ namespace BeerMat.Core.Concrete.ShapeDetection
             var dX = point.X - convexHullPoint.X;
             var dY = point.Y - convexHullPoint.Y;
             return (dX * dX) + (dY * dY);
+        }
+
+        private static IEnumerable<Contour<Point>> FilterByArea(Contour<Point> detectedContours)
+        {
+            var interesstingContours = new List<Contour<Point>>();
+            for (Contour<Point> contours = detectedContours; contours != null; contours = contours.HNext)
+            {
+                if (contours.Area > 1000)
+                {
+                    interesstingContours.Add(contours);
+                }
+            }
+            return interesstingContours;
         }
 
         /// <summary>
@@ -116,7 +136,7 @@ namespace BeerMat.Core.Concrete.ShapeDetection
         /// </summary>
         /// <param name="currentContour">the contour to check on</param>
         /// <returns>true if it is a rectangle</returns>
-        private bool IsRectangle(Contour<Point> currentContour)
+        private static bool IsRectangle(Contour<Point> currentContour)
         {
             if (currentContour.Total != 4)
             {
@@ -127,15 +147,21 @@ namespace BeerMat.Core.Concrete.ShapeDetection
             Point[] pts = currentContour.ToArray();
             LineSegment2D[] edges = PointCollection.PolyLine(pts, true);
 
+            double sumOfInnerAngles = 0d;
+
             for (int i = 0; i < edges.Length; i++)
             {
-                double angle = Math.Abs(edges[(i + 1) % edges.Length].GetExteriorAngleDegree(edges[i]));
-                if (angle < 60 || angle > 120)
-                {
-                    isRectangle = false;
-                    break;
-                }
+                sumOfInnerAngles += Math.Abs(edges[(i + 1) % edges.Length].GetExteriorAngleDegree(edges[i]));
             }
+
+            double angleDeviation = Math.Abs(sumOfInnerAngles - 360);
+
+            // we allow a deviation of 10 at max. this value is just chosen. normally it should be zero
+            if (angleDeviation > 10)
+            {
+                isRectangle = false;
+            }
+
             return isRectangle;
         }
 

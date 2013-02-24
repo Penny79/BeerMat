@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.Threading;
 
 using BeerMat.Core.Abstract;
 using BeerMat.Core.Concrete.PreProcessing;
@@ -40,6 +42,9 @@ namespace BeerMat.Core.Concrete
 
         public BeerMatDetectionResult Process(Image<Bgr, Byte> originalFrame)
         {
+            var stopWatch = new Stopwatch();
+            stopWatch.Start();                        
+
             var result = new BeerMatDetectionResult() { OriginalImage = originalFrame };
 
             result.ThreshholdedImage = this.preprocessor.Run(originalFrame);
@@ -47,7 +52,9 @@ namespace BeerMat.Core.Concrete
             IEnumerable<Point[]> detectedBoxes = this.boxDetector.DetectShapes(result.ThreshholdedImage);
 
             result.ImageWithShapes = this.DrawBoxes(originalFrame, detectedBoxes);
-
+            
+            stopWatch.Stop();            
+            result.TimeTaken = stopWatch.Elapsed;
             return result;
         }
 

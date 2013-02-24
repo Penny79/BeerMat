@@ -1,15 +1,10 @@
 namespace BeerMat.Core.Model
 {
-    public enum FilterType
+    public enum ProcessingSep
     {
-        Grey,
+        Preprocessed,
 
-        Threshold,
+        ShapesDetected
 
-        Edges,
-
-        Boxes,
-
-        PreProcessingTest1
     }
 }

@@ -1,13 +1,13 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
-using BeerMat.Core;
 using BeerMat.Core.Concrete;
 using BeerMat.Core.Model;
 
@@ -27,7 +27,6 @@ namespace WpfApplication1
 
         private readonly Image<Bgr, byte> sampleImage;
 
-        private BeerMatDetectionResult lastResult;
         private readonly BackgroundWorker worker = new BackgroundWorker()
             {
                 WorkerReportsProgress = true,
@@ -35,6 +34,8 @@ namespace WpfApplication1
             };
 
         private bool isRestartNeeded = false;
+
+        private BeerMatDetectionResult lastResult;
 
         private Timer timer;
 
@@ -47,9 +48,9 @@ namespace WpfApplication1
             this.InitializeComponent();
 
             //TestMarker();           
-            this.camera = new Capture(0);            
+            this.camera = new Capture(0);
 
-            foreach (var step in Enum.GetNames(typeof(FilterType)))
+            foreach (var step in Enum.GetNames(typeof(ProcessingSep)))
             {
                 this.cboSteps.Items.Add(step);
             }
@@ -57,44 +58,44 @@ namespace WpfApplication1
             this.sampleImage = new Image<Bgr, byte>(@"D:\Projekte\BeerMat\BeerMat.Gui\images\Radeberger_sample1.bmp");
             this.cboSteps.SelectedIndex = 0;
 
-            this.rbCamera.Checked += SourceChanged;
-            this.rbSample.Checked += SourceChanged;
+            this.rbCamera.Checked += this.SourceChanged;
+            this.rbSample.Checked += this.SourceChanged;
 
             var dispatcherTimer = new DispatcherTimer();
-            dispatcherTimer.Tick += dispatcherTimer_Tick;
+            dispatcherTimer.Tick += this.DispatcherTimerTick;
             dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, 50);
             dispatcherTimer.IsEnabled = true;
             dispatcherTimer.Start();
 
-           
-            
-            this.worker.ProgressChanged+=WorkerOnProgressChanged;
-            this.worker.DoWork += WorkerDoWork;            
-            this.worker.RunWorkerCompleted += worker_RunWorkerCompleted;
+            this.worker.ProgressChanged += this.WorkerOnProgressChanged;
+            this.worker.DoWork += this.WorkerDoWork;
+            this.worker.RunWorkerCompleted += this.worker_RunWorkerCompleted;
             this.worker.RunWorkerAsync(this.rbCamera.IsChecked.Value);
         }
 
-        void dispatcherTimer_Tick(object sender, EventArgs e)
+        #endregion
+
+        #region Methods
+
+        private BitmapImage ConvertToBitmapImage<T>(Image<T, byte> processedImage) where T : struct, IColor
         {
-            if (this.lastResult != null)
+            using (var stream = new MemoryStream())
             {
-                this.imgResult.Source = this.ConvertToBitmapImage(this.lastResult.ImageWithShapes);
-                this.imgOriginal.Source = this.ConvertToBitmapImage(this.lastResult.OriginalImage);
-            }
-        }
-        
+                // My way to display frame 
+                processedImage.Bitmap.Save(stream, ImageFormat.Bmp);
 
-        void worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
-        {
-            this.worker.RunWorkerAsync(this.rbCamera.IsChecked.Value);
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.StreamSource = new MemoryStream(stream.ToArray());
+                bitmap.EndInit();
+                return bitmap;
+            }
         }
 
         private void SourceChanged(object sender, RoutedEventArgs e)
         {
-            isRestartNeeded = true;
+            this.isRestartNeeded = true;
         }
-
-        #endregion
 
         private void WorkerDoWork(object sender, DoWorkEventArgs e)
         {
@@ -111,37 +112,55 @@ namespace WpfApplication1
 
                     var result = shapeDetector.Process(nextFrame);
 
-                    worker.ReportProgress(1, result);
+                    this.worker.ReportProgress(1, result);
                 }
             }
         }
 
-
         private void WorkerOnProgressChanged(object sender, ProgressChangedEventArgs progressChangedEventArgs)
-        {           
+        {
             var processingResult = progressChangedEventArgs.UserState as BeerMatDetectionResult;
             this.lastResult = processingResult;
-            
-            if (isRestartNeeded)
+
+            if (this.isRestartNeeded)
             {
                 this.worker.CancelAsync();
-                isRestartNeeded = false;
+                this.isRestartNeeded = false;
             }
-        }      
+        }
 
-        private BitmapImage ConvertToBitmapImage<T>(Image<T, byte> processedImage) where T : struct, IColor
+        private void DispatcherTimerTick(object sender, EventArgs e)
         {
-            using (var stream = new MemoryStream())
+            ProcessingSep step = (ProcessingSep)Enum.Parse(typeof(ProcessingSep), (string)this.cboSteps.SelectedValue);
+ 
+            if (this.lastResult != null)
             {
-                // My way to display frame 
-                processedImage.Bitmap.Save(stream, ImageFormat.Bmp);
+                switch (step)
+                {
+                    case ProcessingSep.Preprocessed:
+                        this.imgResult.Source = this.ConvertToBitmapImage(this.lastResult.ThreshholdedImage);
+                        break;
+                    case ProcessingSep.ShapesDetected:
+                        this.imgResult.Source = this.ConvertToBitmapImage(this.lastResult.ImageWithShapes);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+               
 
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.StreamSource = new MemoryStream(stream.ToArray());
-                bitmap.EndInit();
-                return bitmap;
+                this.imgOriginal.Source = this.ConvertToBitmapImage(this.lastResult.OriginalImage);
+
+                int fps = Convert.ToInt32(1000f / this.lastResult.TimeTaken.Milliseconds);
+
+                this.lblFps.Content = fps.ToString(CultureInfo.InvariantCulture);
             }
-        }                 
+        }
+
+        private void worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            this.worker.RunWorkerAsync(this.rbCamera.IsChecked.Value);
+        }
+
+        #endregion
     }
 }
