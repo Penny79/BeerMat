@@ -45,13 +45,17 @@
     <Compile Include="Abstract\ICircleDetector.cs" />
     <Compile Include="Abstract\IImagePreProcessor.cs" />
     <Compile Include="Abstract\IBoxDetector.cs" />
+    <Compile Include="Concrete\PointExtensions.cs" />
     <Compile Include="Concrete\ShapeDetection\BoxTransformationCalculator.cs" />
+    <None Include="Concrete\ShapeDetection\CalibTest.cs" />
     <Compile Include="Model\BeerMatDetectionResult.cs" />
+    <Compile Include="Model\DetectedBox.cs" />
     <Compile Include="Model\FilterType.cs" />
     <Compile Include="Concrete\PreProcessing\ImagePreProcessorAdvanced.cs" />
     <Compile Include="Concrete\ShapeDetection\BoxDetector.cs" />
     <Compile Include="Concrete\PreProcessing\TresholdFilter.cs" />
     <Compile Include="Concrete\BeerMatDetector.cs" />
+    <Compile Include="PointPolarAngleComparer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup />

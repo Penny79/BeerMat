@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 
 using BeerMat.Core.Abstract;
+using BeerMat.Core.Model;
 
 using Emgu.CV;
 using Emgu.CV.CvEnum;
@@ -15,7 +16,8 @@ namespace BeerMat.Core.Concrete.ShapeDetection
     {
         #region Fields
 
-        private BoxTransformationCalculator transformationCalculator;
+        private static List<DetectedBox> trackedBoxes = new List<DetectedBox>();
+
 
         #endregion
 
@@ -23,15 +25,16 @@ namespace BeerMat.Core.Concrete.ShapeDetection
 
         public BoxDetector()
         {
-            this.transformationCalculator = new BoxTransformationCalculator();
+          
         }
 
         #endregion
 
         #region Public Methods and Operators
 
-        public IEnumerable<Point[]> DetectShapes(Image<Gray, byte> sourceFrame)
+        public IEnumerable<DetectedBox> DetectShapes(Image<Gray, byte> sourceFrame)
         {
+            var transformationCalculator = new BoxTransformationCalculator();
             //CircleF[] circles = grayImage.HoughCircles(
             //    new Gray(120),
             //    new Gray(120),
@@ -41,14 +44,14 @@ namespace BeerMat.Core.Concrete.ShapeDetection
             //    0 //max radius
             //    )[0];
 
-            var boxList = new List<Point[]>();
+            var boxList = new List<DetectedBox>();
 
             using (var storage = new MemStorage()) //allocate storage for contour approximation
             {
                 var detectedContours = sourceFrame.FindContours(
                     CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, RETR_TYPE.CV_RETR_EXTERNAL);
 
-                var interesstingContours = FilterByArea(detectedContours);
+                var interesstingContours = FilterContours(detectedContours);
 
                 //Parallel.ForEach(
                 //    interesstingContours,
@@ -56,22 +59,209 @@ namespace BeerMat.Core.Concrete.ShapeDetection
                 //        {
                 foreach (var contour in interesstingContours)
                 {
-                    Contour<Point> currentContour = contour.ApproxPoly(contour.Perimeter * 0.05, storage);
+                    Contour<Point> currentContour = contour.ApproxPoly(contour.Perimeter * 0.02, storage);
 
-                    if (IsRectangle(currentContour))
+                    var cornerPoints = currentContour.ToArray();
+
+                    if (cornerPoints.Length == 4 && currentContour.Convex)
                     {
-                        var cornerPoints = GetCornerPointsOfPerspectiveRectangle(currentContour);
-                        boxList.Add(cornerPoints);
+                        var box = new DetectedBox
+                            {
+                                CornerPoints = cornerPoints,
+                                LastDetectedAt = DateTime.UtcNow.Ticks
+                            };
+                        
+                        transformationCalculator.DetermineTransformationMatrix(box);
+
+                        boxList.Add(box);
                     }
                     //});
                 }
             }
-            return boxList;
+
+           ExpireTrackedBoxes();
+
+            MergeWithTrackedBoxes(boxList);
+            
+            return trackedBoxes;
         }
+
+        private void ExpireTrackedBoxes()
+        {
+            long ticksNow = DateTime.UtcNow.Ticks;
+           lock (trackedBoxes)
+           {
+               trackedBoxes = trackedBoxes.Where(x => new TimeSpan(ticksNow - x.LastDetectedAt).TotalMilliseconds < 100).ToList();
+           }
+        }
+
+        private void MergeWithTrackedBoxes(List<DetectedBox> boxList)
+        {
+
+
+            foreach (var detectedBox in boxList)
+            {
+
+                var match = trackedBoxes.FirstOrDefault(x => detectedBox.Equals(x, 50));
+                if (match == null)
+                {
+                    trackedBoxes.Add(detectedBox);
+                }
+                else
+                {
+                    match.CornerPoints[0] = detectedBox.CornerPoints[0];
+                    match.CornerPoints[1] = detectedBox.CornerPoints[1];
+                    match.CornerPoints[2] = detectedBox.CornerPoints[2];
+                    match.CornerPoints[3] = detectedBox.CornerPoints[3];
+                    match.LastDetectedAt = DateTime.UtcNow.Ticks;
+                }
+            }
+
+           // boxList.AddRange(trackedBoxes);
+        }
+
+        /*
+        public IEnumerable<DetectedBox> FindPattern(Image<Bgr, byte> i)
+        {           
+
+        Emgu.CV.Image<Emgu.CV.Structure.Gray, byte> _binary_marker, _warped, _tmp;
+        int _binary_threshold;
+        float _max_error_normed;
+        System.Drawing.PointF[] _warp_dest;
+         //   MarkerPattern my_pattern = this.Pattern as MarkerPattern;
+            
+
+            float best_error = _max_error_normed;
+
+            // Find contour points in black/white image
+            Emgu.CV.Contour<Point> contour_points;
+            Emgu.CV.Image<Gray, byte> my_img = i.Convert<Gray, Byte>();
+
+            using (var binary = new Emgu.CV.Image<Gray, byte>(my_img.Size))
+            {
+                Emgu.CV.CvInvoke.cvThreshold(
+                  my_img, binary,
+                  _binary_threshold, 255,
+                  Emgu.CV.CvEnum.THRESH.CV_THRESH_BINARY | THRESH.CV_THRESH_OTSU);
+                binary._Not(); // Contour is searched on white points, marker envelope is black.
+                contour_points = binary.FindContours();
+            }
+
+            // Loop over all contours
+
+            var _contour_storage = new Emgu.CV.MemStorage();
+            while (contour_points != null)
+            {
+                // Approximate contour points by poly-lines.
+                // For our marker-envelope should generate a poly-line consisting of four vertices.
+                Emgu.CV.Contour<System.Drawing.Point> c = contour_points.ApproxPoly(contour_points.Perimeter * 0.05, _contour_storage);
+                if (c.Total != 4 || c.Perimeter < 200)
+                {
+                    contour_points = contour_points.HNext;
+                    continue;
+                }
+
+                // Warp content of poly-line as if looking at it from the top
+                var warp_source = new System.Drawing.PointF[]
+                    {
+                        new System.Drawing.PointF(c[0].X, c[0].Y), new System.Drawing.PointF(c[1].X, c[1].Y),
+                        new System.Drawing.PointF(c[2].X, c[2].Y), new System.Drawing.PointF(c[3].X, c[3].Y)
+                    };
+
+                var warp_matrix = new Emgu.CV.Matrix<float>(3, 3);
+                Emgu.CV.CvInvoke.cvGetPerspectiveTransform(warp_source, _warp_dest, warp_matrix);
+                Emgu.CV.CvInvoke.cvWarpPerspective(
+                  my_img, _warped, warp_matrix,
+                  (int)Emgu.CV.CvEnum.INTER.CV_INTER_CUBIC + (int)Emgu.CV.CvEnum.WARP.CV_WARP_FILL_OUTLIERS,
+                  new Emgu.CV.Structure.MCvScalar(0)
+                );
+
+                //CvInvoke.cvThreshold(
+                //  _warped, _warped,
+                //  _binary_threshold, 255,
+                //  Emgu.CV.CvEnum.THRESH.CV_THRESH_BINARY | Emgu.CV.CvEnum.THRESH.CV_THRESH_OTSU);
+
+                // Perform a template matching with the stored pattern in order to
+                // determine if content of the envelope matches the stored pattern and
+                // determine the orientation of the pattern in the image.
+                // Orientation is encoded
+                // 0: 0°, 1: 90°, 2: 180°, 3: 270°
+                float error;
+                int orientation;
+                TemplateMatch(out error, out orientation);
+
+                if (error < best_error)
+                {
+                    best_error = error;
+                    int id_0 = orientation;
+                    int id_1 = (orientation + 1) % 4;
+                    int id_2 = (orientation + 2) % 4;
+                    int id_3 = (orientation + 3) % 4;
+
+                    // ids above are still counterclockwise ordered, we need to permute them
+                    // 0   3    0   1
+                    // +---+    +---+
+                    // |   | -> |   |
+                    // +---+    +---+
+                    // 1   2    2   3
+
+                    //dr.Success = true;
+                    //dr.ViewCorrespondences.ImagePoints.Clear();
+                    //dr.ViewCorrespondences.ImagePoints.Add(c[id_0]);
+                    //dr.ViewCorrespondences.ImagePoints.Add(c[id_3]);
+                    //dr.ViewCorrespondences.ImagePoints.Add(c[id_1]);
+                    //dr.ViewCorrespondences.ImagePoints.Add(c[id_2]);
+                }
+
+                //contour_points = contour_points.HNext;
+            } // End of contours
+
+            // Complete with model correspondences.           
+            
+        }
+
+      
 
         #endregion
 
         #region Methods
+
+        private void TemplateMatch(out float error, out int orientation)
+        {
+            // 0 degrees
+            orientation = 0;
+            error = (float)_warped.MatchTemplate(_binary_marker, Emgu.CV.CvEnum.TM_TYPE.CV_TM_SQDIFF_NORMED)[0, 0].Intensity;
+
+            // 90 degrees
+            Emgu.CV.CvInvoke.cvTranspose(_warped, _tmp);
+            Emgu.CV.CvInvoke.cvFlip(_tmp, IntPtr.Zero, 1); // y-axis 
+            float err = (float)_tmp.MatchTemplate(_binary_marker, Emgu.CV.CvEnum.TM_TYPE.CV_TM_SQDIFF_NORMED)[0, 0].Intensity;
+            if (err < error)
+            {
+                error = err;
+                orientation = 1;
+            }
+
+            // 180 degrees
+            Emgu.CV.CvInvoke.cvFlip(_warped, _tmp, -1);
+            err = (float)_tmp.MatchTemplate(_binary_marker, Emgu.CV.CvEnum.TM_TYPE.CV_TM_SQDIFF_NORMED)[0, 0].Intensity;
+            if (err < error)
+            {
+                error = err;
+                orientation = 2;
+            }
+
+            // 270 degrees
+            Emgu.CV.CvInvoke.cvTranspose(_warped, _tmp);
+            Emgu.CV.CvInvoke.cvFlip(_tmp, IntPtr.Zero, 0); // x-axis 
+            err = (float)_tmp.MatchTemplate(_binary_marker, Emgu.CV.CvEnum.TM_TYPE.CV_TM_SQDIFF_NORMED)[0, 0].Intensity;
+            if (err < error)
+            {
+                error = err;
+                orientation = 3;
+            }
+        }
+         */
 
         private static float CalculateDistance(Point convexHullPoint, PointF point)
         {
@@ -80,12 +270,18 @@ namespace BeerMat.Core.Concrete.ShapeDetection
             return (dX * dX) + (dY * dY);
         }
 
-        private static IEnumerable<Contour<Point>> FilterByArea(Contour<Point> detectedContours)
+        /// <summary>
+        /// Filters contours that can not be rectangular and that are small
+        /// </summary>
+        /// <param name="detectedContours">list of contours</param>
+        /// <returns>filtered contours</returns>
+        private static IEnumerable<Contour<Point>> FilterContours(Contour<Point> detectedContours)
         {
             var interesstingContours = new List<Contour<Point>>();
             for (Contour<Point> contours = detectedContours; contours != null; contours = contours.HNext)
             {
-                if (contours.Area > 1000)
+                // has a significant size and 4 or more points
+                if (contours.Area > 1500 && contours.Total >= 4)
                 {
                     interesstingContours.Add(contours);
                 }
@@ -107,7 +303,7 @@ namespace BeerMat.Core.Concrete.ShapeDetection
             var minAreavertices = minAreaRect.GetVertices();
 
             // init dictionary
-            var closestPoints = minAreavertices.ToDictionary(
+            var closestPoints = minAreavertices.Distinct().ToDictionary(
                 minAreavertice => minAreavertice,
                 minAreavertice =>
                 new DistanceInformation { Point = new Point(-1000000, -10000000), Distance = float.MaxValue });
@@ -128,41 +324,56 @@ namespace BeerMat.Core.Concrete.ShapeDetection
                 }
             }
 
-            return closestPoints.Select(x => x.Value.Point).ToArray();
+            return SortCounterClockWise(closestPoints.Select(x => x.Value.Point).ToArray());
         }
 
-        /// <summary>
-        /// Check wether the contour has 4 vertices and, determine if all the angles in the contour are within the range of [80, 100] degree
-        /// </summary>
-        /// <param name="currentContour">the contour to check on</param>
-        /// <returns>true if it is a rectangle</returns>
-        private static bool IsRectangle(Contour<Point> currentContour)
+        private static Point[] SortCounterClockWise(Point[] cornerPoints)
         {
-            if (currentContour.Total != 4)
+            Array.Sort(cornerPoints, new PointPolarAngleComparer());
+
+
+            return cornerPoints;
+        }
+
+
+        /// <summary>
+        /// Tries to group close points to areas and counts the number of areas retrieved
+        /// </summary>
+        /// <param name="currentContour">the contour that contains the points</param>
+        /// <returns>the number of areas</returns>
+        private static Point[] GetAreasOfPointConcentration(Contour<Point> currentContour)
+        {
+            //try to group to 4 areas of close points
+            var pointsToProcess = currentContour.ToList();
+
+            var pointAreas = new List<Point>();
+
+            while (pointsToProcess.Count > 0)
             {
-                return false;
+                // add to first point in the list as the point for a new vertex area
+                var currentPoint = pointsToProcess[0];
+
+                var areaCenterPoint = pointAreas.FirstOrDefault(x => currentPoint != x && x.DistanceTo(currentPoint) < 30);
+                
+                if (!areaCenterPoint.IsEmpty)
+                {
+                    // incremetally improve the center of the area
+                    areaCenterPoint.X = (areaCenterPoint.X + currentPoint.X) / 2;
+                    areaCenterPoint.Y = (areaCenterPoint.Y + currentPoint.Y) / 2;
+                }
+                else
+                {
+                    pointAreas.Add(currentPoint);
+                }
+
+
+             
+                pointsToProcess.Remove(currentPoint);
             }
 
-            bool isRectangle = true;
-            Point[] pts = currentContour.ToArray();
-            LineSegment2D[] edges = PointCollection.PolyLine(pts, true);
-
-            double sumOfInnerAngles = 0d;
-
-            for (int i = 0; i < edges.Length; i++)
-            {
-                sumOfInnerAngles += Math.Abs(edges[(i + 1) % edges.Length].GetExteriorAngleDegree(edges[i]));
-            }
-
-            double angleDeviation = Math.Abs(sumOfInnerAngles - 360);
-
-            // we allow a deviation of 10 at max. this value is just chosen. normally it should be zero
-            if (angleDeviation > 10)
-            {
-                isRectangle = false;
-            }
-
-            return isRectangle;
+           // pointAreas
+            return SortCounterClockWise(pointAreas.ToArray());
+            
         }
 
         #endregion

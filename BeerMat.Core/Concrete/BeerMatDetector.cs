@@ -24,16 +24,16 @@ namespace BeerMat.Core.Concrete
 
         private readonly IBoxDetector boxDetector;
 
-        private readonly IImagePreProcessor preprocessor;
+        private readonly IImagePreProcessor preprocessor;    
 
         #endregion
 
         #region Constructors and Destructors
 
         public BeerMatDetection()
-        {
+        {            
             this.preprocessor = new ImagePreProcessorAdvanced(120, 120);
-            this.boxDetector = new BoxDetector();
+            this.boxDetector = new BoxDetector();            
         }
 
         #endregion
@@ -49,7 +49,7 @@ namespace BeerMat.Core.Concrete
 
             result.ThreshholdedImage = this.preprocessor.Run(originalFrame);
 
-            IEnumerable<Point[]> detectedBoxes = this.boxDetector.DetectShapes(result.ThreshholdedImage);
+            IEnumerable<DetectedBox> detectedBoxes = this.boxDetector.DetectShapes(result.ThreshholdedImage);
 
             result.ImageWithShapes = this.DrawBoxes(originalFrame, detectedBoxes);
             
@@ -62,13 +62,14 @@ namespace BeerMat.Core.Concrete
 
         #region Methods
 
-        private Image<Bgr, Byte> DrawBoxes(Image<Bgr, Byte> frame, IEnumerable<Point[]> boxes)
+        private Image<Bgr, Byte> DrawBoxes(Image<Bgr, Byte> frame, IEnumerable<DetectedBox> boxes)
         {
+            var randomizer = new Random(255);
             Image<Bgr, Byte> boxImage = frame.Copy();
 
             foreach (var box in boxes)
             {
-                boxImage.DrawPolyline(box, true, new Bgr(Color.White), 5);
+                boxImage.DrawPolyline(box.CornerPoints, true, new Bgr(randomizer.Next(255), randomizer.Next(255), randomizer.Next(255)), 5);
             }
 
             return boxImage;

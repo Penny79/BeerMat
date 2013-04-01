@@ -55,7 +55,7 @@ namespace WpfApplication1
                 this.cboSteps.Items.Add(step);
             }
 
-            this.sampleImage = new Image<Bgr, byte>(@"D:\Projekte\BeerMat\BeerMat.Gui\images\Radeberger_sample1.bmp");
+            this.sampleImage = new Image<Bgr, byte>(@"D:\Projekte\BeerMat\BeerMat.Gui\images\grabedFrame4.bmp");
             this.cboSteps.SelectedIndex = 0;
 
             this.rbCamera.Checked += this.SourceChanged;
@@ -65,12 +65,15 @@ namespace WpfApplication1
             dispatcherTimer.Tick += this.DispatcherTimerTick;
             dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, 50);
             dispatcherTimer.IsEnabled = true;
-            dispatcherTimer.Start();
+          //  dispatcherTimer.Start();
 
             this.worker.ProgressChanged += this.WorkerOnProgressChanged;
             this.worker.DoWork += this.WorkerDoWork;
             this.worker.RunWorkerCompleted += this.worker_RunWorkerCompleted;
             this.worker.RunWorkerAsync(this.rbCamera.IsChecked.Value);
+
+           // var frame = this.camera.QueryFrame();
+           // frame.Save(@"D:\Projekte\BeerMat\BeerMat.Gui\images\grabedFrame.bmp");
         }
 
         #endregion
@@ -110,6 +113,10 @@ namespace WpfApplication1
 
                     Image<Bgr, byte> nextFrame = useCamera ? this.camera.QueryFrame() : this.sampleImage;
 
+                    if (DateTime.Now.Year>2013)
+                    {
+                        nextFrame.Save(@"D:\Projekte\BeerMat\BeerMat.Gui\images\grabedFrame4.bmp");
+                    }
                     var result = shapeDetector.Process(nextFrame);
 
                     this.worker.ReportProgress(1, result);
@@ -131,7 +138,7 @@ namespace WpfApplication1
 
         private void DispatcherTimerTick(object sender, EventArgs e)
         {
-            ProcessingSep step = (ProcessingSep)Enum.Parse(typeof(ProcessingSep), (string)this.cboSteps.SelectedValue);
+            var step = (ProcessingSep)Enum.Parse(typeof(ProcessingSep), (string)this.cboSteps.SelectedValue);
  
             if (this.lastResult != null)
             {

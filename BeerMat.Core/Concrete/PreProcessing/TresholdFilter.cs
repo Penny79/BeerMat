@@ -36,8 +36,8 @@ namespace BeerMat.Core.Concrete.PreProcessing
                 adaptiveThresholdBlockSize + adaptiveThresholdBlockSize % 2 + 1,
                 adaptiveThresholdParameter);
 
-            grayFrame = grayFrame.Erode(3);
-            grayFrame = grayFrame.Dilate(3);
+            grayFrame = grayFrame.Erode(4);
+            grayFrame = grayFrame.Dilate(4);
 
             return grayFrame;
         }

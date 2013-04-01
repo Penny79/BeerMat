@@ -43,7 +43,7 @@ namespace BeerMat.Core.Concrete.PreProcessing
 
             //binarize
             const int AdaptiveThresholdBlockSize = 16;
-            const double AdaptiveThresholdParameter = 6;
+            const double AdaptiveThresholdParameter = 4;
 
             CvInvoke.cvAdaptiveThreshold(
                 grayFrame,
