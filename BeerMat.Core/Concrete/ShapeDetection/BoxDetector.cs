@@ -35,69 +35,38 @@ namespace BeerMat.Core.Concrete.ShapeDetection
         public IEnumerable<DetectedBox> DetectShapes(Image<Gray, byte> sourceFrame)
         {
             var transformationCalculator = new BoxTransformationCalculator();
-            //CircleF[] circles = grayImage.HoughCircles(
-            //    new Gray(120),
-            //    new Gray(120),
-            //    70.0, //Resolution of the accumulator used to detect centers of the circles
-            //    100.0, //min distance 
-            //    100, //min radius
-            //    0 //max radius
-            //    )[0];
 
-            var boxList = new List<DetectedBox>();
+            var boxList = GetRectangularContours(sourceFrame);
 
-            using (var storage = new MemStorage()) //allocate storage for contour approximation
+            // avoid possible multiple enumeration
+            var detectedBoxs = boxList as DetectedBox[] ?? boxList.ToArray();
+
+            foreach (var box in detectedBoxs)
             {
-                var detectedContours = sourceFrame.FindContours(
-                    CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, RETR_TYPE.CV_RETR_EXTERNAL);
-
-                var interesstingContours = FilterContours(detectedContours);
-
-                //Parallel.ForEach(
-                //    interesstingContours,
-                //    (contour) =>
-                //        {
-                foreach (var contour in interesstingContours)
-                {
-                    Contour<Point> currentContour = contour.ApproxPoly(contour.Perimeter * 0.02, storage);
-
-                    var cornerPoints = currentContour.ToArray();
-
-                    if (cornerPoints.Length == 4 && currentContour.Convex)
-                    {
-                        var box = new DetectedBox
-                            {
-                                CornerPoints = cornerPoints,
-                                LastDetectedAt = DateTime.UtcNow.Ticks
-                            };
-                        
-                        transformationCalculator.DetermineTransformationMatrix(box);
-
-                        boxList.Add(box);
-                    }
-                    //});
-                }
+                transformationCalculator.DetermineTransformationMatrix(box);
             }
 
-           ExpireTrackedBoxes();
+          //  return boxList;
 
-            MergeWithTrackedBoxes(boxList);
-            
+            ExpireTrackedBoxes();
+
+            MergeWithTrackedBoxes(detectedBoxs);
+
             return trackedBoxes;
         }
 
         private void ExpireTrackedBoxes()
         {
             long ticksNow = DateTime.UtcNow.Ticks;
-           lock (trackedBoxes)
-           {
-               trackedBoxes = trackedBoxes.Where(x => new TimeSpan(ticksNow - x.LastDetectedAt).TotalMilliseconds < 100).ToList();
-           }
+            lock (trackedBoxes)
+            {
+                trackedBoxes =
+                    trackedBoxes.Where(x => new TimeSpan(ticksNow - x.LastDetectedAt).TotalMilliseconds < 100).ToList();
+            }
         }
 
-        private void MergeWithTrackedBoxes(List<DetectedBox> boxList)
+        private void MergeWithTrackedBoxes(IEnumerable<DetectedBox> boxList)
         {
-
 
             foreach (var detectedBox in boxList)
             {
@@ -109,15 +78,25 @@ namespace BeerMat.Core.Concrete.ShapeDetection
                 }
                 else
                 {
-                    match.CornerPoints[0] = detectedBox.CornerPoints[0];
-                    match.CornerPoints[1] = detectedBox.CornerPoints[1];
-                    match.CornerPoints[2] = detectedBox.CornerPoints[2];
-                    match.CornerPoints[3] = detectedBox.CornerPoints[3];
+                    match.NumberOfDetections++;
+                    int weightFactor = match.NumberOfDetections % 10;
+                    match.CornerPoints[0] = GetCenterPoint(match.CornerPoints[0], detectedBox.CornerPoints[0], weightFactor);
+                    match.CornerPoints[1] = GetCenterPoint(match.CornerPoints[1], detectedBox.CornerPoints[1], weightFactor);
+                    match.CornerPoints[2] = GetCenterPoint(match.CornerPoints[2], detectedBox.CornerPoints[2], weightFactor);
+                    match.CornerPoints[3] = GetCenterPoint(match.CornerPoints[3], detectedBox.CornerPoints[3], weightFactor);
                     match.LastDetectedAt = DateTime.UtcNow.Ticks;
                 }
             }
+        }
 
-           // boxList.AddRange(trackedBoxes);
+        private Point GetCenterPoint(Point a, Point b, int weightFactorForA)
+        {
+            var c = new Point();
+
+            c.X = (a.X * weightFactorForA + b.X) / (weightFactorForA + 1);
+            c.Y = (a.Y * weightFactorForA + b.Y) / (weightFactorForA + 1);
+
+            return c;
         }
 
         /*
@@ -262,131 +241,42 @@ namespace BeerMat.Core.Concrete.ShapeDetection
             }
         }
          */
-
-        private static float CalculateDistance(Point convexHullPoint, PointF point)
-        {
-            var dX = point.X - convexHullPoint.X;
-            var dY = point.Y - convexHullPoint.Y;
-            return (dX * dX) + (dY * dY);
-        }
+       
 
         /// <summary>
-        /// Filters contours that can not be rectangular and that are small
-        /// </summary>
-        /// <param name="detectedContours">list of contours</param>
-        /// <returns>filtered contours</returns>
-        private static IEnumerable<Contour<Point>> FilterContours(Contour<Point> detectedContours)
+        /// Gt a list of detected rectangles in the image
+        /// </summary>      
+        /// <returns>the list of rectangles</returns>
+        private static IEnumerable<DetectedBox> GetRectangularContours(Image<Gray, byte> sourceFrame)
         {
-            var interesstingContours = new List<Contour<Point>>();
-            for (Contour<Point> contours = detectedContours; contours != null; contours = contours.HNext)
+            var boxList = new List<DetectedBox>();
+            var rectangularContours = new List<Contour<Point>>();
+
+            using (var storage = new MemStorage()) //allocate storage for contour approximation
             {
-                // has a significant size and 4 or more points
-                if (contours.Area > 1500 && contours.Total >= 4)
+                var detectedContours = sourceFrame.FindContours(
+                    CHAIN_APPROX_METHOD.CV_CHAIN_APPROX_SIMPLE, RETR_TYPE.CV_RETR_EXTERNAL);
+
+                for (Contour<Point> contours = detectedContours; contours != null; contours = contours.HNext)
                 {
-                    interesstingContours.Add(contours);
-                }
-            }
-            return interesstingContours;
-        }
+                    Contour<Point> currentContour = contours.ApproxPoly(contours.Perimeter * 0.02, storage);
 
-        /// <summary>
-        /// Calclates the MinArea RectAngle and the Convex Hull for the given Contour
-        /// Determines the Corner points of the rectangle by finding 4 points with minimal distance between the
-        /// convex hull and the min area rectangle.
-        /// </summary>
-        /// <param name="currentContour">the contour to work on</param>
-        /// <returns>the corner points of a rectangle with perspective</returns>
-        private static Point[] GetCornerPointsOfPerspectiveRectangle(Contour<Point> currentContour)
-        {
-            // Get vertices of Min Area Rectangle
-            var minAreaRect = currentContour.GetMinAreaRect();
-            var minAreavertices = minAreaRect.GetVertices();
-
-            // init dictionary
-            var closestPoints = minAreavertices.Distinct().ToDictionary(
-                minAreavertice => minAreavertice,
-                minAreavertice =>
-                new DistanceInformation { Point = new Point(-1000000, -10000000), Distance = float.MaxValue });
-
-            var convexHull = currentContour.GetConvexHull(ORIENTATION.CV_CLOCKWISE);
-
-            foreach (var convexHullPoint in convexHull)
-            {
-                foreach (var point in minAreavertices)
-                {
-                    float distance = CalculateDistance(convexHullPoint, point);
-
-                    if (distance < closestPoints[point].Distance)
+                    // has a significant size and 4 or more points
+                    if (currentContour.Convex && currentContour.Total == 4 && currentContour.Area > 2000)
                     {
-                        closestPoints[point].Point = convexHullPoint;
-                        closestPoints[point].Distance = distance;
+                        var box = new DetectedBox
+                        {
+                            CornerPoints = currentContour.ToArray(),
+                            LastDetectedAt = DateTime.UtcNow.Ticks
+                        };
+                        boxList.Add(box);
+                      
                     }
                 }
             }
-
-            return SortCounterClockWise(closestPoints.Select(x => x.Value.Point).ToArray());
+            return boxList;
         }
 
-        private static Point[] SortCounterClockWise(Point[] cornerPoints)
-        {
-            Array.Sort(cornerPoints, new PointPolarAngleComparer());
-
-
-            return cornerPoints;
-        }
-
-
-        /// <summary>
-        /// Tries to group close points to areas and counts the number of areas retrieved
-        /// </summary>
-        /// <param name="currentContour">the contour that contains the points</param>
-        /// <returns>the number of areas</returns>
-        private static Point[] GetAreasOfPointConcentration(Contour<Point> currentContour)
-        {
-            //try to group to 4 areas of close points
-            var pointsToProcess = currentContour.ToList();
-
-            var pointAreas = new List<Point>();
-
-            while (pointsToProcess.Count > 0)
-            {
-                // add to first point in the list as the point for a new vertex area
-                var currentPoint = pointsToProcess[0];
-
-                var areaCenterPoint = pointAreas.FirstOrDefault(x => currentPoint != x && x.DistanceTo(currentPoint) < 30);
-                
-                if (!areaCenterPoint.IsEmpty)
-                {
-                    // incremetally improve the center of the area
-                    areaCenterPoint.X = (areaCenterPoint.X + currentPoint.X) / 2;
-                    areaCenterPoint.Y = (areaCenterPoint.Y + currentPoint.Y) / 2;
-                }
-                else
-                {
-                    pointAreas.Add(currentPoint);
-                }
-
-
-             
-                pointsToProcess.Remove(currentPoint);
-            }
-
-           // pointAreas
-            return SortCounterClockWise(pointAreas.ToArray());
-            
-        }
-
-        #endregion
-
-        private class DistanceInformation
-        {
-            #region Public Properties
-
-            public float Distance { get; set; }
-
-            public Point Point { get; set; }
-
-            #endregion
-        }
+        #endregion      
     }
 }
