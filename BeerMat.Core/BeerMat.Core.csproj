@@ -47,7 +47,6 @@
     <Compile Include="Abstract\IBoxDetector.cs" />
     <Compile Include="Concrete\PointExtensions.cs" />
     <Compile Include="Concrete\ShapeDetection\BoxTransformationCalculator.cs" />
-    <None Include="Concrete\ShapeDetection\CalibTest.cs" />
     <Compile Include="Model\BeerMatDetectionResult.cs" />
     <Compile Include="Model\DetectedBox.cs" />
     <Compile Include="Model\FilterType.cs" />
